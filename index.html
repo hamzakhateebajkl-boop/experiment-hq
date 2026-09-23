@@ -76,6 +76,10 @@ svg#office{width:100%;height:100%;font-family:"Inter",sans-serif}
 .rail-head b{font-size:14px}
 .rail-head .tiny{margin-left:2px}
 .rail-body{overflow:auto;padding:10px 12px calc(env(safe-area-inset-bottom,0px) + 14px);display:flex;flex-direction:column;gap:8px;flex:1}
+.rail-group{font-size:11px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--faint);padding:10px 6px 3px;display:flex;align-items:baseline;gap:7px}
+.rail-group:first-child{padding-top:2px}
+.rail-group.hot span:first-child{color:var(--red)}
+.rail-group .cnt{font-weight:500}
 .pcard{border:1px solid var(--line);border-radius:8px;padding:10px 12px;background:var(--card);cursor:pointer;text-align:left;width:100%;display:block}
 .pcard:hover{border-color:var(--red)}
 .pcard:focus-visible{outline:2px solid var(--red);outline-offset:1px}
@@ -655,18 +659,29 @@ $('#btnTeam').addEventListener('click',()=>{ renderTeamDlg(); $('#dlgTeam').show
 function renderRail(){
   renderTV();
   const body=$('#railBody'); if(!body) return;
-  const list=Object.values(S.projects).sort((a,b)=>(a.status==='done')-(b.status==='done') || String(a.deadline||'9').localeCompare(String(b.deadline||'9')));
   const all=teamList();
-  $('#railCount').textContent = list.filter(x=>x.status!=='done').length+' active';
-  body.innerHTML = list.length ? list.map(pr=>{
-    const steps=pr.steps||[]; const done=steps.filter(s=>s.done).length; const pct=steps.length?Math.round(done/steps.length*100):0; const lead=all.find(e=>e.id===pr.owner);
-    const next=steps.find(s=>!s.done);
+  const items=Object.values(S.projects);
+  $('#railCount').textContent = items.filter(x=>x.status!=='done').length+' active';
+  const card=pr=>{
+    const steps=pr.steps||[]; const done=steps.filter(x=>x.done).length; const pct=steps.length?Math.round(done/steps.length*100):0;
+    const lead=all.find(e=>e.id===pr.owner); const next=steps.find(x=>!x.done);
     return `<button class="pcard ${pr.status==='done'?'done-p':''}" data-openproj="${esc(pr.id)}">
       <div class="row" style="justify-content:space-between;gap:6px;flex-wrap:nowrap"><b>${esc(pr.name)}</b>${PROJ_TAG[pr.status]||''}</div>
-      <div class="tiny" style="margin:2px 0 6px">${esc(pr.client||'')}${pr.client&&pr.deadline?' · ':''}${pr.deadline? fmtDate(pr.deadline)+' · '+dl(pr.deadline):''}</div>
-      ${next? `<div class="tiny" style="margin:0 0 6px;color:var(--muted)">→ ${esc(next.title)}</div>`:''}
+      <div class="tiny" style="margin:2px 0 6px">${esc(pr.client||'')}${pr.client&&pr.deadline?' \u00b7 ':''}${pr.deadline? 'submit '+fmtDate(pr.deadline)+' \u00b7 '+dl(pr.deadline):''}</div>
+      ${next? `<div class="tiny" style="margin:0 0 6px;color:var(--muted)">\u2192 ${esc(next.title)}</div>`:''}
       <div class="row" style="gap:8px;flex-wrap:nowrap"><span class="bar"><i style="width:${pct}%"></i></span><span class="tiny">${done}/${steps.length}</span>${lead?avHTML(lead,statusOf(lead.id),'sm'):''}</div>
-    </button>`; }).join('') : '<div class="empty">No projects yet — add the first one</div>';
+    </button>`; };
+  const live=items.filter(p=>p.status!=='done');
+  const g={today:[],tomorrow:[],coming:[],past:[],nodate:[]};
+  live.forEach(p=>{ if(!p.deadline){ g.nodate.push(p); return; } const d=daysLeft(p.deadline); if(d===0) g.today.push(p); else if(d===1) g.tomorrow.push(p); else if(d>1) g.coming.push(p); else g.past.push(p); });
+  const byDl=(a,b)=>String(a.deadline||'9').localeCompare(String(b.deadline||'9'));
+  g.today.sort(byDl); g.tomorrow.sort(byDl); g.coming.sort(byDl); g.past.sort((a,b)=>byDl(b,a)); g.nodate.sort((a,b)=>String(a.name).localeCompare(String(b.name)));
+  const doneList=items.filter(p=>p.status==='done').sort((a,b)=>byDl(b,a));
+  const sec=(label,arr,cls)=> arr.length? `<div class="rail-group ${cls||''}"><span>${label}</span><span class="cnt">${arr.length}</span></div>`+arr.map(card).join('') : '';
+  const todayHtml = g.today.length? sec('\u25CF Due today',g.today,'hot')
+    : `<div class="rail-group hot"><span>\u25CF Due today</span></div><div class="empty" style="margin:0 0 2px">No submissions due today \u2713</div>`;
+  const html = todayHtml + sec('Due tomorrow',g.tomorrow) + sec('Coming next',g.coming) + sec('Past due',g.past) + sec('No date yet',g.nodate) + sec('Done',doneList);
+  body.innerHTML = items.length? html : '<div class="empty">No projects yet \u2014 add the first one</div>';
   bindCommon(body);
 }
 function renderBoard(){
