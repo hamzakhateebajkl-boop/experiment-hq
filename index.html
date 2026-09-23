@@ -216,14 +216,14 @@ table.db td.name{font-weight:500}
   <div class="brand"><img id="logoImg" alt="Experiment Events"><small>Live office</small></div>
 </header>
 <div class="hud hud-tr">
-  <button class="pill btnish" id="pillCounts"><span class="d" style="background:var(--red)"></span><span id="countsTxt">0 working</span></button>
+  <button class="pill btnish" id="pillCounts"><span class="d" style="background:#2E9E63"></span><span id="countsTxt">0 working</span></button>
   <button class="pill btnish" id="btnProjects"><svg class="ni" viewBox="0 0 16 16"><rect x="3" y="2.5" width="10" height="11" rx="1.5"/><path d="M5.5 6.2h5M5.5 8.7h5M5.5 11.2h3"/></svg> Projects <span class="faint" id="cntProjects">0</span></button>
   <button class="pill btnish" id="btnTeam"><svg class="ni" viewBox="0 0 16 16"><circle cx="6" cy="5.6" r="2.1"/><path d="M2.6 13.4c.3-2.4 1.7-3.6 3.4-3.6s3.1 1.2 3.4 3.6M11.3 8.1a1.9 1.9 0 1 0-.1-3.8M10.9 10.2c1.9.1 3 1.2 3.3 3.2"/></svg> Team</button>
   <span class="pill" id="pillSync"><span class="d"></span><span>Connecting…</span></span>
 </div>
 <div class="hud hud-bl">
   <div class="legend">
-    <span><i style="background:var(--red)"></i>Working</span>
+    <span><i style="background:#2E9E63"></i>Working</span>
     <span><i style="background:#C9C7C1"></i>Away</span>
     <span><i style="background:#fff;border:1.5px solid #C9C7C1;width:7px;height:7px"></i>Offline</span>
   </div>
@@ -371,10 +371,10 @@ function fmtDate(iso){ if(!iso) return ''; const d=new Date(iso+(iso.length===10
 function daysLeft(iso){ if(!iso) return null; return Math.ceil((Date.parse(iso+'T12:00:00')-Date.now())/864e5); }
 function dl(iso){ const d=daysLeft(iso); if(d===null) return ''; return d<0? Math.abs(d)+'d overdue' : d===0?'today': d+'d left'; }
 function toast(msg){ const t=$('#toast'); t.textContent=msg; t.classList.add('show'); clearTimeout(toast._t); toast._t=setTimeout(()=>t.classList.remove('show'),2200); }
-const STATUS_TAG = {working:'<span class="tag red"><span class="d"></span>Working</span>', away:'<span class="tag yellow"><span class="d"></span>Away</span>', offline:'<span class="tag"><span class="d"></span>Offline</span>'};
+const STATUS_TAG = {working:'<span class="tag green"><span class="d"></span>Working</span>', away:'<span class="tag yellow"><span class="d"></span>Away</span>', offline:'<span class="tag"><span class="d"></span>Offline</span>'};
 const PROJ_TAG = {planning:'<span class="tag blue">Planning</span>', active:'<span class="tag green">Active</span>', 'on-hold':'<span class="tag yellow">On hold</span>', done:'<span class="tag">Done</span>'};
-const statusDot = st => st==='working'?'#D3302A':st==='away'?'#C9C7C1':'#FFFFFF';
-const avHTML = (e,st,cls='') => `<span class="sk-av ${cls}">${SPRITES[e.id]?`<img src="${SPRITES[e.id]}" alt="">`:initials(e.name)}<span class="b" style="background:${st==='working'?'var(--red)':st==='away'?'#C9C7C1':'#EDEBE6'}"></span></span>`;
+const statusDot = st => st==='working'?'#2E9E63':st==='away'?'#C9C7C1':'#FFFFFF';
+const avHTML = (e,st,cls='') => `<span class="sk-av ${cls}">${SPRITES[e.id]?`<img src="${SPRITES[e.id]}" alt="">`:initials(e.name)}<span class="b" style="background:${st==='working'?'#2E9E63':st==='away'?'#C9C7C1':'#EDEBE6'}"></span></span>`;
 
 /* ===================== SVG ===================== */
 const NS='http://www.w3.org/2000/svg';
@@ -445,7 +445,7 @@ function buildOffice(){
     const key = k==='GM'?'GM':Number(k); const s=SEATS[key]; const e=all.find(x=>x.desk===key);
     const g=el('g',{class:'seat off',transform:`translate(${s.x},${s.y})`,tabindex:'0',role:'button'});
     g.appendChild(circ(0,-4,27,{fill:'transparent'}));
-    if(e){ const glow=el('ellipse',{cx:0,cy:12,rx:17,ry:7,fill:'#D3302A',opacity:'.3',class:'glow'}); glow.style.display='none'; g.appendChild(glow); }
+    if(e){ const glow=el('ellipse',{cx:0,cy:12,rx:17,ry:7,fill:'#2E9E63',opacity:'.35',class:'glow'}); glow.style.display='none'; g.appendChild(glow); }
     const tagPos=w=>{ if(s.tag==='left') return {x:-w-16,y:-8}; if(s.tag==='right') return {x:16,y:-8}; if(s.tag==='top') return {x:-w/2,y:-46}; return {x:-w/2,y:28}; };
     if(e){
       g.dataset.emp=e.id; g.setAttribute('aria-label',e.name+' — desk '+key);
@@ -489,6 +489,19 @@ function placeWalker(){
   const c=w.querySelector('.char'); if(c) c.setAttribute('transform',`scale(${.95*S.walker.facing},.95)`);
   const t=w.querySelector('text'); if(t) t.setAttribute('transform',`scale(${S.walker.facing},1)`);
 }
+/* gentle camera: zooms toward the walker and follows between desks */
+const CAM={x:0,y:0,w:1000,h:566};
+let camTarget={x:0,y:0,w:1000,h:566}, camRaf=null;
+const REDUCED_MOTION = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
+function camApply(){ const svg=document.getElementById('office'); if(svg) svg.setAttribute('viewBox',CAM.x.toFixed(1)+' '+CAM.y.toFixed(1)+' '+CAM.w.toFixed(1)+' '+CAM.h.toFixed(1)); }
+function camSet(cx,cy,zoom){ if(REDUCED_MOTION) return; const w=1000/zoom,h=566/zoom;
+  camTarget={x:Math.max(0,Math.min(1000-w,cx-w/2)),y:Math.max(0,Math.min(566-h,cy-h/2)),w,h}; camKick(); }
+function camReset(){ if(REDUCED_MOTION) return; camTarget={x:0,y:0,w:1000,h:566}; camKick(); }
+function camKick(){ if(camRaf) return;
+  const step=()=>{ let done=true;
+    for(const k of ['x','y','w','h']){ const d=camTarget[k]-CAM[k]; if(Math.abs(d)>0.4){ CAM[k]+=d*0.085; done=false; } else CAM[k]=camTarget[k]; }
+    camApply(); camRaf=done?null:requestAnimationFrame(step); };
+  camRaf=requestAnimationFrame(step); }
 function walkTo(target, done){
   const wk=S.walker; const from={x:wk.x,y:wk.y}; const w=$('#walker'); if(!w){ wk.x=target.x; wk.y=target.y; done&&done(); return; }
   wk.path=routeTo(from,target); wk.moving=true; w.classList.remove('idle');
@@ -498,7 +511,7 @@ function walkTo(target, done){
     const p=wk.path[0]; if(!p){ wk.moving=false; const w2=$('#walker'); if(w2) w2.classList.add('idle'); placeWalker(); publishPresence(true); done&&done(); return; }
     const dx=p.x-wk.x, dy=p.y-wk.y, dist=Math.hypot(dx,dy);
     if(dist<3){ wk.x=p.x; wk.y=p.y; wk.path.shift(); } else { const m=Math.min(dist,speed*dt); wk.x+=dx/dist*m; wk.y+=dy/dist*m; wk.facing = dx<0?-1:1; }
-    placeWalker(); publishPresence(); requestAnimationFrame(step);
+    placeWalker(); publishPresence(); camSet(wk.x,wk.y,1.3); requestAnimationFrame(step);
   }
   requestAnimationFrame(step);
 }
@@ -600,6 +613,7 @@ function itemsFor(empId){ const out=[]; Object.values(S.projects).forEach(pr=>(p
 function cardHTML(id){
   const e=emp(id); const st=statusOf(id); const p=S.presence[id]||{}; const items=itemsFor(id); const open=items.filter(i=>!i.step.done); const mine=S.me===id;
   const projs=Object.values(S.projects).filter(pr=>pr.owner===id || (pr.steps||[]).some(s=>s.owner===id));
+  const ongoing=projs.filter(p=>p.status!=='done');
   return `
    <button class="card-x" data-closecard aria-label="Close">✕</button>
    <h2 class="title">${avHTML(e,st)}<div class="swemp"><button type="button" class="swemp-btn" id="swempBtn" aria-haspopup="listbox" aria-expanded="false">${esc(e.name)}<svg class="ni" viewBox="0 0 16 16" style="width:12px;height:12px"><path d="M4 6.5 8 10.5 12 6.5"/></svg></button><div class="swemp-menu hidden" id="swempMenu" role="listbox">${teamList().map(x=>{const xs=statusOf(x.id);return `<button type="button" role="option" aria-selected="${x.id===id}" class="swemp-opt ${x.id===id?'sel':''}" data-emp-opt="${x.id}">${avHTML(x,xs,'sm')}<span class="nm">${esc(x.name)}</span><span class="dk">${esc(x.desk)}</span></button>`;}).join('')}</div></div></h2>
@@ -611,7 +625,7 @@ function cardHTML(id){
    <div class="h2">Action items <span class="cnt">${open.length} open</span></div>
    ${items.length? `<div class="todo">${items.map(({project,step})=>`<label class="todo-item ${step.done?'done':''}"><input type="checkbox" data-toggle="${esc(project.id)}|${esc(step.id)}" ${step.done?'checked':''}><div class="t"><b>${esc(step.title)}</b><small>${esc(project.name)}${step.due?' · '+fmtDate(step.due)+' · '+dl(step.due):''}</small></div></label>`).join('')}</div>` : '<div class="empty">Nothing assigned yet</div>'}
    <form class="addline" id="addItem"><span class="faint">＋</span><input type="text" id="newItemTitle" placeholder="New action item" maxlength="140" required><select id="newItemProject" required style="width:auto;max-width:44%">${Object.values(S.projects).filter(x=>x.status!=='done').map(x=>`<option value="${esc(x.id)}">${esc(x.name)}</option>`).join('')||'<option value="">No project yet</option>'}</select><button class="btn sm" type="submit">Add</button></form>
-   ${projs.length? `<div class="h2">Projects</div><div class="row">${projs.map(pr=>`<button class="tag blue" data-openproj="${esc(pr.id)}" style="cursor:pointer;border:0">${esc(pr.name)}</button>`).join('')}</div>`:''}
+   ${ongoing.length? `<div class="h2">Ongoing projects <span class="cnt">${ongoing.length}</span></div><div class="todo" style="gap:6px">${ongoing.map(pr=>{const stp=pr.steps||[];const dn=stp.filter(x=>x.done).length;const pct=stp.length?Math.round(dn/stp.length*100):0;const nx=stp.find(x=>!x.done);return `<button class="pcard" data-openproj="${esc(pr.id)}"><div class="row" style="justify-content:space-between;gap:6px;flex-wrap:nowrap"><b>${esc(pr.name)}</b>${PROJ_TAG[pr.status]||''}</div><div class="tiny" style="margin:2px 0 6px">${esc(pr.client||'')}${pr.client&&pr.deadline?' \u00b7 ':''}${pr.deadline? fmtDate(pr.deadline)+' \u00b7 '+dl(pr.deadline):''}</div>${nx?`<div class="tiny" style="margin:0 0 6px;color:var(--muted)">\u2192 ${esc(nx.title)}</div>`:''}<div class="row" style="gap:8px;flex-wrap:nowrap"><span class="bar"><i style="width:${pct}%"></i></span><span class="tiny">${dn}/${stp.length}</span></div></button>`}).join('')}</div>`:''}
    <div class="h2">${mine?'Notes to yourself':'Chat'} <span class="tiny" id="chatState"></span></div>
    <div class="comments" id="msgs"></div>
    ${S.me ? `<form class="composer" id="composer">${avHTML(emp(S.me),statusOf(S.me),'sm')}<input type="text" id="msgInput" maxlength="600" placeholder="${st==='offline'?'Leave a message for later…':'Write a message…'}" autocomplete="off" required><button class="btn sm primary" type="submit">Send</button></form>` : `<div class="empty">Pick who you are (bottom right) to chat</div>`}`;
@@ -631,7 +645,7 @@ function showCard(id){
 document.addEventListener('keydown',e=>{ if(e.key!=='Escape' || document.querySelector('dialog[open]')) return; const m=$('#swempMenu'); if(m && !m.classList.contains('hidden')){ m.classList.add('hidden'); return; } if(!$('#floatCard').classList.contains('hidden')) closeCard(); });
 document.addEventListener('click',e=>{ const m=$('#swempMenu'); if(m && !m.classList.contains('hidden') && !e.target.closest('.swemp')) m.classList.add('hidden'); });
 function positionCard(id){ document.body.classList.add('peek-open'); }
-function closeCard(){ const c=$('#floatCard'); c.classList.add('hidden'); c.dataset.emp=''; document.body.classList.remove('peek-open'); S.selected=null; closeChat(); updateOffice(); }
+function closeCard(){ const c=$('#floatCard'); c.classList.add('hidden'); c.dataset.emp=''; document.body.classList.remove('peek-open'); S.selected=null; closeChat(); updateOffice(); camReset(); }
 
 /* ===================== overlays ===================== */
 document.querySelectorAll('[data-close]').forEach(b=>b.addEventListener('click',()=>document.getElementById(b.dataset.close).close()));
