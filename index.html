@@ -29,7 +29,7 @@
 :root{--rail-w:308px;--peek-w:0px}
 body.peek-open{--peek-w:332px}
 @media (max-width:700px){body.peek-open{--peek-w:0px}}
-html,body{height:100%}
+html,body{height:100%;overscroll-behavior:none}
 body{margin:0;background:var(--paper);color:var(--ink);font-family:"Inter",-apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif;font-size:14px;line-height:1.5;-webkit-font-smoothing:antialiased;overflow:hidden}
 button,input,select,textarea{font:inherit;color:inherit}
 h1,h2,h3{margin:0;font-weight:700;letter-spacing:-.01em}
@@ -230,6 +230,7 @@ table.db td.name{font-weight:500}
   <span class="pill" id="pillSync"><span class="d"></span><span>Connecting…</span></span>
 </div>
 <div class="hud hud-bl">
+  <button class="pill btnish hidden" id="recenterBtn"><svg class="ni" viewBox="0 0 16 16" style="width:13px;height:13px"><path d="M6 2.5H3.5A1 1 0 0 0 2.5 3.5V6M10 2.5h2.5a1 1 0 0 1 1 1V6M6 13.5H3.5a1 1 0 0 1-1-1V10M10 13.5h2.5a1 1 0 0 0 1-1V10"/></svg> Full view</button>
   <div class="legend">
     <span><i style="background:#2E9E63"></i>Working</span>
     <span><i style="background:#C9C7C1"></i>Away</span>
@@ -475,8 +476,8 @@ function buildOffice(){
   svg.appendChild(seats);
   svg.appendChild(el('g',{id:'visitors'}));
   svg.appendChild(el('g',{id:'walker',class:'walker idle',transform:`translate(${S.walker.x},${S.walker.y})`}));
-  svg.addEventListener('click',ev=>{ if(!ev.target.closest('.seat')){ closeCard(); } });
-  seats.addEventListener('click',ev=>{ const g=ev.target.closest('.seat'); if(!g) return; if(g.dataset.emp) visit(g.dataset.emp); else if(g.dataset.free) toast('Free desk '+g.dataset.free+' — check in from the corner controls to take it'); });
+  svg.addEventListener('click',ev=>{ if(Date.now()-window.__squelchClick<350) return; if(!ev.target.closest('.seat')){ closeCard(); } });
+  seats.addEventListener('click',ev=>{ if(Date.now()-window.__squelchClick<350) return; const g=ev.target.closest('.seat'); if(!g) return; if(g.dataset.emp) visit(g.dataset.emp); else if(g.dataset.free) toast('Free desk '+g.dataset.free+' — check in from the corner controls to take it'); });
   seats.addEventListener('keydown',ev=>{ if(ev.key==='Enter'||ev.key===' '){ const g=ev.target.closest('.seat'); if(g&&g.dataset.emp){ ev.preventDefault(); visit(g.dataset.emp);} } });
   renderWalker(); updateOffice();
 }
@@ -498,18 +499,79 @@ function placeWalker(){
   const t=w.querySelector('text'); if(t) t.setAttribute('transform',`scale(${S.walker.facing},1)`);
 }
 /* gentle camera: zooms toward the walker and follows between desks */
+let manualCam=false;
 const CAM={x:0,y:0,w:1000,h:566};
 let camTarget={x:0,y:0,w:1000,h:566}, camRaf=null;
 const REDUCED_MOTION = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
-function camApply(){ const svg=document.getElementById('office'); if(svg) svg.setAttribute('viewBox',CAM.x.toFixed(1)+' '+CAM.y.toFixed(1)+' '+CAM.w.toFixed(1)+' '+CAM.h.toFixed(1)); }
-function camSet(cx,cy,zoom){ if(REDUCED_MOTION) return; const w=1000/zoom,h=566/zoom;
+function camApply(){ const svg=document.getElementById('office'); if(svg) svg.setAttribute('viewBox',CAM.x.toFixed(1)+' '+CAM.y.toFixed(1)+' '+CAM.w.toFixed(1)+' '+CAM.h.toFixed(1)); const rb=document.getElementById('recenterBtn'); if(rb) rb.classList.toggle('hidden', CAM.w>=996 && camTarget.w>=996); }
+function camSet(cx,cy,zoom){ if(REDUCED_MOTION||manualCam) return; const w=1000/zoom,h=566/zoom;
   camTarget={x:Math.max(0,Math.min(1000-w,cx-w/2)),y:Math.max(0,Math.min(566-h,cy-h/2)),w,h}; camKick(); }
-function camReset(){ if(REDUCED_MOTION) return; camTarget={x:0,y:0,w:1000,h:566}; camKick(); }
+function camReset(){ manualCam=false; if(REDUCED_MOTION) return; camTarget={x:0,y:0,w:1000,h:566}; camKick(); }
 function camKick(){ if(camRaf) return;
   const step=()=>{ let done=true;
     for(const k of ['x','y','w','h']){ const d=camTarget[k]-CAM[k]; if(Math.abs(d)>0.4){ CAM[k]+=d*0.085; done=false; } else CAM[k]=camTarget[k]; }
     camApply(); camRaf=done?null:requestAnimationFrame(step); };
   camRaf=requestAnimationFrame(step); }
+
+/* touch + wheel navigation of the office map */
+function clampCam(){ CAM.w=Math.min(1000,Math.max(1000/3,CAM.w)); CAM.h=CAM.w*566/1000; CAM.x=Math.max(0,Math.min(1000-CAM.w,CAM.x)); CAM.y=Math.max(0,Math.min(566-CAM.h,CAM.y)); }
+function camMetrics(){ const svg=document.getElementById('office'); const r=svg.getBoundingClientRect(); const sc=Math.min(r.width/CAM.w,r.height/CAM.h); return {r,sc,ox:r.left+(r.width-CAM.w*sc)/2,oy:r.top+(r.height-CAM.h*sc)/2}; }
+function s2w(px,py){ const m=camMetrics(); return {x:CAM.x+(px-m.ox)/m.sc, y:CAM.y+(py-m.oy)/m.sc}; }
+function camSync(){ clampCam(); camTarget={x:CAM.x,y:CAM.y,w:CAM.w,h:CAM.h}; camApply(); }
+window.__squelchClick=0;
+(function gestures(){
+  const svg=document.getElementById('office'); if(!svg) return;
+  svg.style.touchAction='none';
+  const pts=new Map(); let start=null, movedFar=false, lastTap=0;
+  svg.addEventListener('pointerdown',e=>{
+    pts.set(e.pointerId,{x:e.clientX,y:e.clientY});
+    if(pts.size===1){ start={cam:{...CAM},x:e.clientX,y:e.clientY}; movedFar=false; }
+    else if(pts.size===2){ const a=[...pts.values()];
+      start={cam:{...CAM}, d:Math.hypot(a[0].x-a[1].x,a[0].y-a[1].y), world:s2w((a[0].x+a[1].x)/2,(a[0].y+a[1].y)/2)}; movedFar=true; }
+  });
+  svg.addEventListener('pointermove',e=>{
+    if(!pts.has(e.pointerId)) return;
+    pts.set(e.pointerId,{x:e.clientX,y:e.clientY});
+    if(pts.size===1 && start && start.x!==undefined){
+      const dx=e.clientX-start.x, dy=e.clientY-start.y;
+      if(Math.hypot(dx,dy)>8) movedFar=true;
+      if(movedFar){ manualCam=true; const m=camMetrics(); CAM.x=start.cam.x-dx/m.sc; CAM.y=start.cam.y-dy/m.sc; camSync(); }
+    } else if(pts.size===2 && start && start.d){
+      manualCam=true;
+      const a=[...pts.values()];
+      const d=Math.hypot(a[0].x-a[1].x,a[0].y-a[1].y); const mid={x:(a[0].x+a[1].x)/2,y:(a[0].y+a[1].y)/2};
+      CAM.w=start.cam.w/Math.max(.2,d/start.d); clampCam();
+      const m=camMetrics();
+      CAM.x=start.world.x-(mid.x-m.ox)/m.sc; CAM.y=start.world.y-(mid.y-m.oy)/m.sc; camSync();
+    }
+  });
+  const up=e=>{
+    pts.delete(e.pointerId);
+    if(pts.size===1){ const p=[...pts.values()][0]; start={cam:{...CAM},x:p.x,y:p.y}; }
+    else if(pts.size===0){ if(movedFar) window.__squelchClick=Date.now(); start=null; }
+  };
+  svg.addEventListener('pointerup',e=>{
+    up(e);
+    if(!movedFar){
+      const now=Date.now();
+      if(now-lastTap<300){
+        if(CAM.w<900){ camReset(); }
+        else { manualCam=true; const pt=s2w(e.clientX,e.clientY); const w=1000/1.9,h=566/1.9;
+          camTarget={x:Math.max(0,Math.min(1000-w,pt.x-w/2)),y:Math.max(0,Math.min(566-h,pt.y-h/2)),w,h}; camKick(); camApply(); }
+        lastTap=0;
+      } else lastTap=now;
+    }
+  });
+  svg.addEventListener('pointercancel',up);
+  svg.addEventListener('wheel',e=>{
+    e.preventDefault(); manualCam=true;
+    const pt=s2w(e.clientX,e.clientY);
+    CAM.w=CAM.w*Math.exp(e.deltaY*0.0016); clampCam();
+    const m=camMetrics();
+    CAM.x=pt.x-(e.clientX-m.ox)/m.sc; CAM.y=pt.y-(e.clientY-m.oy)/m.sc; camSync();
+  },{passive:false});
+  const rb=document.getElementById('recenterBtn'); if(rb) rb.addEventListener('click',()=>camReset());
+})();
 function walkTo(target, done){
   const wk=S.walker; const from={x:wk.x,y:wk.y}; const w=$('#walker'); if(!w){ wk.x=target.x; wk.y=target.y; done&&done(); return; }
   wk.path=routeTo(from,target); wk.moving=true; w.classList.remove('idle');
@@ -579,6 +641,7 @@ function setMe(id, remember=true){
   S.me=id||null; if(remember) ls.set('ee.me', id||'');
   renderWalker(); renderMeBar();
   if(S.me && !S.walker.moving){ const st=statusOf(S.me); if(st!=='offline'){ const s=seatOf(emp(S.me).desk); S.walker.x=s.x; S.walker.y=s.y; placeWalker(); } }
+  if(S.me && window.innerWidth<700 && !manualCam){ const sm=seatOf(emp(S.me).desk); camSet(sm.x,sm.y,1.5); }
   publishPresence(true);
 }
 function renderMeBar(){
@@ -611,6 +674,7 @@ setInterval(()=>{ if(document.visibilityState==='visible' && S.me && statusOf(S.
 
 /* ===================== floating person card ===================== */
 function visit(id){
+  manualCam=false;
   S.selected=id; updateOffice(); showCard(id);
   const e=emp(id);
   if(S.me===id){ walkTo(seatOf(e.desk)); }
